@@ -69,16 +69,17 @@ async def every_req(request, handler):
 @routes.post("/on-push")
 async def on_push(req: web.Request):
     # validate...
+    rev = "50c6bc6"
     time_s = datetime.now().strftime(LOG_FILE_DATE_FORMAT)
     build_conf = BuildConf(
         build_dir=os.path.join(
             state.build_path, f"build_{state.req_id}"),
         log_file=os.path.join(
-            ENV.LOG_DIR, f"latest__{time_s}"
+            ENV.LOG_DIR, f"{rev}__{time_s}"
         ),
         repo_url=ENV.REPO_URL,
         req_id=state.req_id,
-        rev="50c6bc6",
+        rev=rev,
     )
     job_q.put_nowait(lambda: build.do_build(build_conf))
     return web.Response(body=json.dumps("OK"))

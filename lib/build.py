@@ -7,15 +7,25 @@ from .apptypes import BuildConf
 
 
 class State:
-    _log: str = ""
+    def __init__(self, build: BuildConf):
+        self.build = build
+        return
 
     def log(self, text) -> None:
         if type(text) == bytes:
             text = text.decode("utf-8")
-        self._log = self._log + (text or "") + "\n"
+        with open(self.build.log_file, "a") as f:
+            f.write((text or "") + "\n")
 
-    def get_log(self) -> str:
-        return self._log
+    def run(self, cmd, **kwargs):
+        with open(self.build.log_file, "ab", buffering=0) as f:
+            args = {**kwargs, **{
+                "stdout": f,
+                "stderr": f,
+                "env": os.environ,
+            }}
+            res = subprocess.run(cmd, **args)
+            return res
 
 
 HOOKS = [
@@ -29,8 +39,8 @@ HOOKS = [
 
 def do_build(build: BuildConf) -> None:
     logging.info("begin build %s", build)
-    state = State()
-    setup(build)
+    state = State(build=build)
+    setup(state, build)
     state.log("BEGIN {}".format(build))
     for hook in HOOKS:
         success = run_hook(state, build, hook)
@@ -41,30 +51,24 @@ def do_build(build: BuildConf) -> None:
 
 
 def finish_build(state: State, build: BuildConf) -> None:
-    tear_down(build)
+    state.run(["rm", "-rf", build.build_dir]) \
+         .check_returncode()
     state.log("DONE {}".format(build))
-    with open(build.log_file, "w") as f:
-        f.write(state.get_log())
     logging.info("done build %s", build)
     return
 
 
 # util
-def setup(build: BuildConf):
+def setup(state: State, build: BuildConf):
     if os.path.exists(build.build_dir):
-        subprocess.run(["rm", "-rf", build.build_dir])
-    subprocess.run(["git", "clone", build.repo_url, build.build_dir]) \
+        state.run(["rm", "-rf", build.build_dir]) \
+            .check_returncode()
+    state.run(["git", "clone", build.repo_url, build.build_dir]) \
         .check_returncode()
-    subprocess.run(["git", "fetch", "--all"], cwd=build.build_dir) \
-              .check_returncode()
-    subprocess.run(["git", "checkout", build.rev], cwd=build.build_dir) \
-              .check_returncode()
-    return
-
-
-def tear_down(build: BuildConf):
-    subprocess.run(["rm", "-rf", build.build_dir]) \
-        .check_returncode()
+    state.run(["git", "fetch", "--all"], cwd=build.build_dir) \
+         .check_returncode()
+    state.run(["git", "checkout", build.rev], cwd=build.build_dir) \
+         .check_returncode()
     return
 
 
@@ -76,15 +80,12 @@ def on_hook_fail(build: BuildConf, hook: str):
 def run_hook(state: State, build: BuildConf, hook: str) -> bool:
     "returns success"
     hook_path = os.path.join(build.build_dir, "hooks", hook)
-    logging.info("looking at hook path %s", hook_path)
     if os.path.exists(hook_path):
-        res = subprocess.run([f"hooks/{hook}"], cwd=build.build_dir)
-        state.log("\n--------RUNNING HOOK {hook}--------")
-        state.log(res.stdout)
+        res = state.run([f"hooks/{hook}"], cwd=build.build_dir)
+        state.log(f"\n--------RUNNING HOOK {hook}--------")
         if res.returncode != 0:
-            state.log("""
+            state.log(f"""
 ------------------------------------------------------------------------------
-BUILD HOOK FAILED""")
-            state.log(res.stderr)
+BUILD HOOK {hook} FAILED""")
             return False
     return True
