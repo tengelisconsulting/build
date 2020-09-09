@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+from datetime import datetime
 import json
 import logging
 import os
@@ -19,6 +20,8 @@ from lib.state import state
 routes = web.RouteTableDef()
 job_q: Queue = Queue()
 
+LOG_FILE_DATE_FORMAT = "%Y-%m-%d__%H.%M"
+
 
 def setup_logging() -> None:
     logging.basicConfig(
@@ -33,7 +36,10 @@ def setup_logging() -> None:
 def handle_loop() -> None:
     while True:
         job = job_q.get()
-        job()
+        try:
+            job()
+        except Exception as e:
+            logging.exception("server handling job failed: {}".format(e))
     return
 
 
@@ -63,9 +69,16 @@ async def every_req(request, handler):
 @routes.post("/on-push")
 async def on_push(req: web.Request):
     # validate...
+    time_s = datetime.now().strftime(LOG_FILE_DATE_FORMAT)
     build_conf = BuildConf(
+        build_dir=os.path.join(
+            state.build_path, f"build_{state.req_id}"),
+        log_file=os.path.join(
+            ENV.LOG_DIR, f"latest__{time_s}"
+        ),
+        repo_url=ENV.REPO_URL,
         req_id=state.req_id,
-        rev=None,
+        rev="50c6bc6",
     )
     job_q.put_nowait(lambda: build.do_build(build_conf))
     return web.Response(body=json.dumps("OK"))
@@ -80,7 +93,7 @@ async def init() -> web.Application:
         logging.exception("failed to use uvloop: {}".format(e))
     state.build_path = os.path.abspath(ENV.BUILD_DIR)
     if not os.path.exists(state.build_path):
-        subprocess.check_call(["mkdir", state.build_path])
+        subprocess.check_call(["mkdir", "-p", state.build_path])
     app = web.Application(middlewares=[every_req])
     app.add_routes(routes)
     return app
