@@ -2,7 +2,6 @@ import logging
 import os
 import pprint
 import subprocess
-from types import SimpleNamespace
 
 from .apptypes import BuildConf
 from .data import set_status
