@@ -13,6 +13,7 @@ from aiohttp import web
 
 from lib.apptypes import BuildConf
 import lib.build as build
+import lib.data as data
 from lib.env import ENV
 from lib.state import state
 
@@ -35,10 +36,12 @@ def setup_logging() -> None:
 
 def handle_loop() -> None:
     while True:
-        job = job_q.get()
+        handler, build = job_q.get()
         try:
-            job()
+            data.set_status(build, "BUILDING")
+            handler(build)
         except Exception as e:
+            data.set_status(build, "FAILED")
             logging.exception("server handling job failed: {}".format(e))
     return
 
@@ -81,8 +84,15 @@ async def on_push(req: web.Request):
         req_id=state.req_id,
         rev=rev,
     )
-    job_q.put_nowait(lambda: build.do_build(build_conf))
+    data.set_status(build_conf, "PENDING")
+    job_q.put_nowait((build.do_build, build_conf))
     return web.Response(body=json.dumps("OK"))
+
+
+@routes.get("/status")
+async def display_status(req: web.Request):
+    res = json.dumps(data.get_status())
+    return web.Response(body=res)
 
 
 async def init() -> web.Application:

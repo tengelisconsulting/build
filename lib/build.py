@@ -1,9 +1,11 @@
 import logging
 import os
+import pprint
 import subprocess
 from types import SimpleNamespace
 
 from .apptypes import BuildConf
+from .data import set_status
 
 
 class State:
@@ -38,7 +40,7 @@ HOOKS = [
 
 
 def do_build(build: BuildConf) -> None:
-    logging.info("begin build %s", build)
+    logging.info("begin build %s", pprint.pformat(build))
     state = State(build=build)
     setup(state, build)
     state.log("BEGIN {}".format(build))
@@ -46,7 +48,9 @@ def do_build(build: BuildConf) -> None:
         success = run_hook(state, build, hook)
         if not success:
             state.log("\n\nBUILD IS NOT SUCCESS - ABORTING")
+            set_status(build, "FAILED")
             return finish_build(state, build)
+    set_status(build, "SUCCESS")
     return finish_build(state, build)
 
 
@@ -54,7 +58,7 @@ def finish_build(state: State, build: BuildConf) -> None:
     state.run(["rm", "-rf", build.build_dir]) \
          .check_returncode()
     state.log("DONE {}".format(build))
-    logging.info("done build %s", build)
+    logging.info("done build %s", pprint.pformat(build))
     return
 
 
@@ -81,8 +85,8 @@ def run_hook(state: State, build: BuildConf, hook: str) -> bool:
     "returns success"
     hook_path = os.path.join(build.build_dir, "hooks", hook)
     if os.path.exists(hook_path):
-        res = state.run([f"hooks/{hook}"], cwd=build.build_dir)
         state.log(f"\n--------RUNNING HOOK {hook}--------")
+        res = state.run([f"hooks/{hook}"], cwd=build.build_dir)
         if res.returncode != 0:
             state.log(f"""
 ------------------------------------------------------------------------------
