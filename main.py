@@ -11,10 +11,11 @@ import threading
 
 from aiohttp import web
 
-from lib.apptypes import BuildConf
-import lib.build as build
+from lib.build import BuildConf
+from lib.build import do_build
 import lib.data as data
 from lib.env import ENV
+from lib.sec import verify_git_hook_sha1
 from lib.state import state
 
 
@@ -23,6 +24,8 @@ job_q: Queue = Queue()
 
 LOG_FILE_DATE_FORMAT = "%Y-%m-%d__%H.%M"
 
+headers = None
+payload = None
 
 def setup_logging() -> None:
     logging.basicConfig(
@@ -36,12 +39,12 @@ def setup_logging() -> None:
 
 def handle_loop() -> None:
     while True:
-        handler, build = job_q.get()
+        handler, build_conf = job_q.get()
         try:
-            data.set_status(build, "BUILDING")
-            handler(build)
+            data.set_status(build_conf, "BUILDING")
+            handler(build_conf)
         except Exception as e:
-            data.set_status(build, "FAILED")
+            data.set_status(build_conf, "FAILED")
             logging.exception("server handling job failed: {}".format(e))
     return
 
@@ -71,21 +74,28 @@ async def every_req(request, handler):
 
 @routes.post("/on-push")
 async def on_push(req: web.Request):
-    # validate...
-    rev = "50c6bc6"
+    payload = await req.read()
+    signature = req.headers.get("x-hub-signature")
+    if not verify_git_hook_sha1(payload, signature):
+        return web.Response(status=401, body="Bad signature")
+    body = json.loads(payload)
+    rev = body["after"]
+    proj_name = body["repository"]["name"]
+    repo_url = body["repository"]["ssh_url"]
     time_s = datetime.now().strftime(LOG_FILE_DATE_FORMAT)
+    log_dir = os.path.join(ENV.LOG_DIR, proj_name)
+    if not os.path.exists(log_dir):
+        subprocess.run(["mkdir", "-p", log_dir]).check_returncode()
     build_conf = BuildConf(
         build_dir=os.path.join(
-            state.build_path, f"build_{state.req_id}"),
-        log_file=os.path.join(
-            ENV.LOG_DIR, f"{rev}__{time_s}"
-        ),
-        repo_url=ENV.REPO_URL,
+            ENV.BUILD_DIR, f"{proj_name}_{state.req_id}"),
+        log_file=os.path.join(log_dir, f"{rev}__{time_s}"),
+        repo_url=repo_url,
         req_id=state.req_id,
         rev=rev,
     )
     data.set_status(build_conf, "PENDING")
-    job_q.put_nowait((build.do_build, build_conf))
+    job_q.put_nowait((do_build, build_conf))
     return web.Response(body=json.dumps("OK"))
 
 
@@ -96,15 +106,14 @@ async def display_status(req: web.Request):
 
 
 async def init() -> web.Application:
-    logging.info("build server startup for repo url %s", ENV.REPO_URL)
+    logging.info("build server startup")
     try:
         import uvloop
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     except Exception as e:
         logging.exception("failed to use uvloop: {}".format(e))
-    state.build_path = os.path.abspath(ENV.BUILD_DIR)
-    if not os.path.exists(state.build_path):
-        subprocess.check_call(["mkdir", "-p", state.build_path])
+    if not os.path.exists(ENV.BUILD_DIR):
+        subprocess.run(["mkdir", "-p", ENV.BUILD_DIR]).check_returncode()
     app = web.Application(middlewares=[every_req])
     app.add_routes(routes)
     return app
