@@ -26,6 +26,8 @@ class State:
                 "env": os.environ,
             }}
             res = subprocess.run(cmd, **args)
+            if res.returncode != 0:
+                logging.error("shell cmd err\n%s", res.stderr.decode("utf-8"))
             return res
 
 
