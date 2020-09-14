@@ -2,6 +2,9 @@ aiohttp==3.6.2
 async-timeout==3.0.1
 attrs==20.2.0
 chardet==3.0.4
+google-api-python-client==1.8.4
+google-auth-httplib2==0.0.3
+google-auth-oauthlib==0.4.1
 idna==2.10
 multidict==4.7.6
 uvloop==0.14.0

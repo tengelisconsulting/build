@@ -4,7 +4,6 @@ import pprint
 import subprocess
 
 from .apptypes import BuildConf
-from .data import set_status
 
 
 class State:
@@ -38,7 +37,7 @@ HOOKS = [
 ]
 
 
-def do_build(build: BuildConf) -> None:
+def do_build(build: BuildConf) -> str:
     logging.info("begin build %s", pprint.pformat(build))
     state = State(build=build)
     setup(state, build)
@@ -47,10 +46,10 @@ def do_build(build: BuildConf) -> None:
         success = run_hook(state, build, hook)
         if not success:
             state.log("\n\nBUILD IS NOT SUCCESS - ABORTING")
-            set_status(build, "FAILED")
-            return finish_build(state, build)
-    set_status(build, "SUCCESS")
-    return finish_build(state, build)
+            finish_build(state, build)
+            return "FAILED"
+    finish_build(state, build)
+    return "SUCCESS"
 
 
 def finish_build(state: State, build: BuildConf) -> None:

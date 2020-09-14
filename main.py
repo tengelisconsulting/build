@@ -8,6 +8,8 @@ import os
 from queue import Queue
 import subprocess
 import threading
+from typing import Optional
+from types import SimpleNamespace
 
 from aiohttp import web
 
@@ -15,17 +17,25 @@ from lib.build import BuildConf
 from lib.build import do_build
 import lib.data as data
 from lib.env import ENV
+from lib.mail import init_mail
 from lib.sec import verify_git_hook_sha1
-from lib.state import state
 
 
 routes = web.RouteTableDef()
+failure_q: Queue = Queue()
 job_q: Queue = Queue()
 
 LOG_FILE_DATE_FORMAT = "%Y-%m-%d__%H.%M"
 
-headers = None
-payload = None
+
+class State(SimpleNamespace):
+    handle_thread: Optional[threading.Thread] = None
+    mail_thread: Optional[threading.Thread] = None
+    req_id: int = 0
+
+
+state = State()
+
 
 def setup_logging() -> None:
     logging.basicConfig(
@@ -42,7 +52,11 @@ def handle_loop() -> None:
         handler, build_conf = job_q.get()
         try:
             data.set_status(build_conf, "BUILDING")
-            handler(build_conf)
+            result = handler(build_conf)
+            data.set_status(build_conf, result)
+            if result == "FAILED":
+                logging.error("build failure: %s", build_conf)
+                failure_q.put_nowait(build_conf)
         except Exception as e:
             data.set_status(build_conf, "FAILED")
             logging.exception("server handling job failed: {}".format(e))
@@ -90,6 +104,7 @@ async def on_push(req: web.Request):
         build_dir=os.path.join(
             ENV.BUILD_DIR, f"{proj_name}_{state.req_id}"),
         log_file=os.path.join(log_dir, f"{rev}__{time_s}"),
+        proj_name=proj_name,
         repo_url=repo_url,
         req_id=state.req_id,
         rev=rev,
@@ -112,6 +127,10 @@ async def init() -> web.Application:
         asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     except Exception as e:
         logging.exception("failed to use uvloop: {}".format(e))
+    if ENV.GMAIL_CREDS_F:
+        state.mail_thread = threading.Thread(
+            target=init_mail, args=[failure_q], daemon=True)
+        state.mail_thread.start()
     if not os.path.exists(ENV.BUILD_DIR):
         subprocess.run(["mkdir", "-p", ENV.BUILD_DIR]).check_returncode()
     app = web.Application(middlewares=[every_req])
