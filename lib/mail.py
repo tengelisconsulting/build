@@ -71,7 +71,7 @@ def _create_message(
         msg_text: str = "",
         headers: Dict = {}
 ) -> Dict:
-    message = MIMEText(msg_text)
+    message = MIMEText(msg_text, "html")
     message['to'] = to_email
     message['from'] = ENV.GMAIL_SEND_ADDR
     message['subject'] = msg_subject
