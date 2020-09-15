@@ -7,7 +7,7 @@ I happily used Dockerhub for some time this way, but was motivated to run my own
 with the DockerHub infrastructure.
 
 The server currently runs one build at a time, in a background thread.
-To allow synchronous builds, the build execution would need to be performed on isolated network stacks, in order to prevent port collision during testing,
+To allow synchronous builds the build execution would need to be performed on isolated network stacks in order to prevent port collision during testing,
 among other issues.
 In the future I would like to investigate dynamically provisioning build execution environments on demand,
 perhaps up to some maximum number of parallel builds.
