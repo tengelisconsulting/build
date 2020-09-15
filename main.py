@@ -57,6 +57,10 @@ def handle_loop() -> None:
             if result == "FAILED":
                 logging.error("build failure: %s", build_conf)
                 failure_q.put_nowait(build_conf)
+        except subprocess.CalledProcessError as e:
+            data.set_status(build_conf, "FAILED")
+            logging.exception("server handling job failed: {}".format(e))
+            logging.error("subprocess output:\n%s\n%s", e.stdout, e.stderr)
         except Exception as e:
             data.set_status(build_conf, "FAILED")
             logging.exception("server handling job failed: {}".format(e))
