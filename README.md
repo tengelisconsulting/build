@@ -1,6 +1,6 @@
 # Overview
 This is a simple build server, which listens for github webhooks and runs build commands defined as executables in a /build directory at the root of the
-relevant repository.  The hooks presently defined, in order, as: "pre_build", "build", "test", "push" and "post_push".
+relevant repository.  The hooks presently defined, in order, are: "pre_build", "build", "test", "push" and "post_push".
 
 This is essentially the same as how autobuilds are defined on DockerHub with respect to github pushes.
 I happily used Dockerhub for some time this way, but was motivated to run my own build server after experiencing sporadic and unexplainable errors
