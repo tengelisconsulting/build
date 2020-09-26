@@ -7,6 +7,7 @@ import logging
 import os
 import pprint
 from queue import Queue
+import re
 import subprocess
 import threading
 from typing import Optional
@@ -27,6 +28,9 @@ failure_q: Queue = Queue()
 job_q: Queue = Queue()
 
 LOG_FILE_DATE_FORMAT = "%Y-%m-%d__%H.%M"
+GIT_HEAD_REF_REGEX = re.compile(
+    r".*/([^/]*)")
+NO_BUILD_BRANCH_NAME = "no_build"
 
 
 class State(SimpleNamespace):
@@ -100,6 +104,12 @@ async def on_push(req: web.Request):
     if not verify_git_hook_sha1(payload, signature):
         return web.Response(status=401, body="Bad signature")
     body = json.loads(payload)
+    branch_match = re.search(GIT_HEAD_REF_REGEX, body["ref"])
+    if branch_match:
+        if branch_match.groups()[0] == NO_BUILD_BRANCH_NAME:
+            logging.info("push was on branch %s, skipping build",
+                         NO_BUILD_BRANCH_NAME)
+            return web.Response(body="OK")
     rev = body["after"]
     proj_name = body["repository"]["name"]
     repo_url = body["repository"]["ssh_url"]
