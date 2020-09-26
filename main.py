@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 import logging
 import os
+import pprint
 from queue import Queue
 import subprocess
 import threading
@@ -122,8 +123,9 @@ async def on_push(req: web.Request):
 
 @routes.get("/status")
 async def display_status(req: web.Request):
-    res = json.dumps(data.get_status())
-    return web.Response(body=res)
+    res = pprint.pformat(
+        json.dumps(data.get_status()))
+    return web.Response(text=res)
 
 
 async def init() -> web.Application:
