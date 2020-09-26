@@ -40,7 +40,6 @@ def get_status():
         with shelve.open(ENV.DATA_FILE) as s:
             if not s:
                 return {}
-            logging.info(list(s.items()))
             return sorted(s.items(), key=lambda x: x[1]["updated"])
 
 
