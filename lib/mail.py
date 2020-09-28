@@ -71,6 +71,9 @@ def _create_message(
         msg_text: str = "",
         headers: Dict = {}
 ) -> Dict:
+    lines = msg_text.split("\n")
+    email_text = "".join(f"<div>{line}</div>" for line in lines)
+    msg_text = f"""<div>{email_text}</div> """
     message = MIMEText(msg_text, "html")
     message['to'] = to_email
     message['from'] = ENV.GMAIL_SEND_ADDR
